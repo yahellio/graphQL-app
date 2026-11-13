@@ -1,7 +1,8 @@
 # Seismo — GraphQL Federation
 
 Клиент-серверное приложение для анализа землетрясений.
-Данные собираются из USGS, EMSC и World Bank; backend — Apollo Federation (gateway + подграфы
+Данные собираются из USGS, EMSC и World Bank
+Backend: Apollo Federation (gateway + подграфы
 `countries` и `quakes`), frontend — React + Apollo Client.
 
 ## Запуск
