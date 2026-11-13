@@ -1,0 +1,147 @@
+name: seismo
+
+# Общие настройки backend-сервисов (один образ, разные команды запуска).
+x-backend: &backend
+  build: ./backend
+  image: seismo-backend:latest
+  restart: unless-stopped
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+x-backend-env: &backend-env
+  DATABASE_URL: postgres://seismo:seismo@postgres:5432/seismo
+  # Трассировка OpenTelemetry -> Jaeger (OTLP/HTTP)
+  OTEL_TRACES_EXPORTER: otlp
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+  OTEL_METRICS_EXPORTER: none
+  OTEL_LOGS_EXPORTER: none
+  OTEL_NODE_RESOURCE_DETECTORS: env,host,os,process
+  OTEL_NODE_ENABLED_INSTRUMENTATIONS: http,express,graphql,pg,undici
+
+x-healthcheck: &healthcheck
+  interval: 5s
+  timeout: 3s
+  retries: 10
+  start_period: 10s
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: seismo
+      POSTGRES_PASSWORD: seismo
+      POSTGRES_DB: seismo
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      # -h 127.0.0.1: во время выполнения init.sql сервер слушает только сокет, так что «готов» = схема создана
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "seismo", "-d", "seismo"]
+      <<: *healthcheck
+
+  # Автоматический сбор данных: USGS + EMSC + World Bank
+  collector:
+    <<: *backend
+    command: ["node", "dist/collector/index.js"]
+    environment:
+      <<: *backend-env
+      OTEL_SERVICE_NAME: collector
+      COLLECT_DAYS: 180
+      MIN_MAGNITUDE: 3
+      COLLECT_INTERVAL_MINUTES: 30
+
+  # Подграф 1: страны
+  countries:
+    <<: *backend
+    command: ["node", "dist/countries/index.js"]
+    environment:
+      <<: *backend-env
+      OTEL_SERVICE_NAME: countries
+      PORT: 4001
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4001/health"]
+      <<: *healthcheck
+
+  # Подграф 2: землетрясения
+  quakes:
+    <<: *backend
+    command: ["node", "dist/quakes/index.js"]
+    environment:
+      <<: *backend-env
+      OTEL_SERVICE_NAME: quakes
+      PORT: 4002
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4002/health"]
+      <<: *healthcheck
+
+  # Federation gateway — единая точка входа GraphQL
+  gateway:
+    <<: *backend
+    command: ["node", "dist/gateway/index.js"]
+    environment:
+      <<: *backend-env
+      OTEL_SERVICE_NAME: gateway
+      PORT: 4000
+      COUNTRIES_URL: http://countries:4001/graphql
+      QUAKES_URL: http://quakes:4002/graphql
+      RATE_LIMIT_PER_MINUTE: 300
+      MAX_QUERY_DEPTH: 8
+      MAX_QUERY_COMPLEXITY: 5000
+      SUBGRAPH_TIMEOUT_MS: 10000
+    depends_on:
+      countries:
+        condition: service_healthy
+      quakes:
+        condition: service_healthy
+    ports:
+      - "4000:4000"   # Apollo Sandbox: http://localhost:4000/graphql
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4000/health"]
+      <<: *healthcheck
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      gateway:
+        condition: service_healthy
+    ports:
+      - "8080:80"     # приложение: http://localhost:8080
+
+  # ---------- Мониторинг и трассировка ----------
+
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:12.4
+    restart: unless-stopped
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/seismo.json
+    volumes:
+      - ./monitoring/grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ./monitoring/grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ./monitoring/grafana/seismo.json:/var/lib/grafana/dashboards/seismo.json:ro
+    depends_on:
+      - prometheus
+    ports:
+      - "3000:3000"
+
+  jaeger:
+    image: jaegertracing/jaeger:2.21.0
+    restart: unless-stopped
+    ports:
+      - "16686:16686" # UI трассировки
+
+volumes:
+  pgdata:

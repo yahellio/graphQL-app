@@ -1,0 +1,12 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: gateway
+    static_configs: [{ targets: ["gateway:4000"] }]
+  - job_name: countries
+    static_configs: [{ targets: ["countries:4001"] }]
+  - job_name: quakes
+    static_configs: [{ targets: ["quakes:4002"] }]
+  - job_name: collector
+    static_configs: [{ targets: ["collector:9464"] }]
