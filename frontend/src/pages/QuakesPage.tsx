@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from '@apollo/client/react';
 import { useState, type FormEvent } from 'react';
 import { CREATE_QUAKE, DELETE_QUAKE, QUAKES, UPDATE_QUAKE, type Quake, type QuakeFilter, type QuakeSort, type QuakeSource } from '../graphql';
-import { Pager, SortHeader, Status, fmtDate, fmtNum, magClass, useDebounced } from '../ui';
+import { Pager, SortHeader, Status, fmtDate, fmtMag, fmtNum, magClass, useDebounced } from '../ui';
 
 const PAGE_SIZE = 25;
 const SOURCES: QuakeSource[] = ['USGS', 'EMSC', 'MANUAL'];
@@ -18,7 +18,7 @@ interface Filters {
 
 const EMPTY: Filters = { search: '', sources: [], minMagnitude: '', maxMagnitude: '', from: '', to: '', country: '' };
 
-/** Переводит состояние формы в GraphQL-фильтр: пустые поля в запрос не попадают. */
+// Пустые поля в фильтр не попадают.
 function toFilter(f: Filters): QuakeFilter {
   const filter: QuakeFilter = {};
   if (f.search.trim()) filter.search = f.search.trim();
@@ -90,48 +90,49 @@ export function QuakesPage() {
         <QuakeForm key={editing === 'new' ? 'new' : editing.id} quake={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />
       )}
 
-      <Status loading={loading} error={error} />
+      <Status loading={loading} hasData={!!result} error={error} />
       {result && (
-        <>
-          <table>
-            <thead>
-              <tr>
-                <SortHeader field="TIME" sort={sort} onSort={setSort}>Время</SortHeader>
-                <SortHeader field="MAGNITUDE" sort={sort} onSort={setSort}>Магн.</SortHeader>
-                {columns.withDepth && <SortHeader field="DEPTH" sort={sort} onSort={setSort}>Глубина, км</SortHeader>}
-                <th>Место</th>
-                {columns.withCoords && <th>Координаты</th>}
-                {columns.withCountry && <th>Страна</th>}
-                <th>Источник</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {result.items.map((q) => (
-                <tr key={q.id}>
-                  <td>{fmtDate(q.time)}</td>
-                  <td><span className={magClass(q.magnitude)}>{q.magnitude.toFixed(1)}</span> <small className="muted">{q.magnitudeType}</small></td>
-                  {columns.withDepth && <td>{fmtNum(q.depthKm, 1)}</td>}
-                  <td>{q.url ? <a href={q.url} target="_blank" rel="noreferrer">{q.place}</a> : q.place}</td>
-                  {columns.withCoords && <td>{q.latitude?.toFixed(2)}, {q.longitude?.toFixed(2)}</td>}
-                  {columns.withCountry && <td>{q.country ? `${q.country.name}` : <span className="muted">—</span>}</td>}
-                  <td><span className={`tag ${q.source}`}>{q.source}</span></td>
-                  <td className="actions">
-                    <button title="Изменить" onClick={() => setEditing(q)}>✎</button>
-                    <button title="Удалить" onClick={() => confirm(`Удалить событие «${q.place}»?`) && deleteQuake({ variables: { id: q.id } })}>✕</button>
-                  </td>
+        <div className={loading ? 'stale' : undefined}>
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <SortHeader field="TIME" sort={sort} onSort={setSort}>Время</SortHeader>
+                  <SortHeader field="MAGNITUDE" sort={sort} onSort={setSort}>Магн.</SortHeader>
+                  {columns.withDepth && <SortHeader field="DEPTH" sort={sort} onSort={setSort}>Глубина, км</SortHeader>}
+                  <th>Место</th>
+                  {columns.withCoords && <th>Координаты</th>}
+                  {columns.withCountry && <th>Страна</th>}
+                  <th>Источник</th>
+                  <th />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {result.items.map((q) => (
+                  <tr key={q.id}>
+                    <td className="num">{fmtDate(q.time)}</td>
+                    <td className="num"><span className={magClass(q.magnitude)}>{fmtMag(q.magnitude)}</span> <small className="muted">{q.magnitudeType}</small></td>
+                    {columns.withDepth && <td className="num">{fmtNum(q.depthKm, 1)}</td>}
+                    <td>{q.url ? <a href={q.url} target="_blank" rel="noreferrer">{q.place}</a> : q.place}</td>
+                    {columns.withCoords && <td className="num">{q.latitude?.toFixed(2)}; {q.longitude?.toFixed(2)}</td>}
+                    {columns.withCountry && <td>{q.country ? `${q.country.name}` : <span className="muted">—</span>}</td>}
+                    <td><span className={`tag ${q.source}`}>{q.source}</span></td>
+                    <td className="actions">
+                      <button title="Изменить" onClick={() => setEditing(q)}>✎</button>
+                      <button title="Удалить" onClick={() => confirm(`Удалить событие «${q.place}»?`) && deleteQuake({ variables: { id: q.id } })}>✕</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <Pager total={result.total} limit={PAGE_SIZE} offset={offset} onChange={setOffset} />
-        </>
+        </div>
       )}
     </section>
   );
 }
 
-/** Форма создания/редактирования события (мутации createQuake / updateQuake). */
 function QuakeForm({ quake, onClose }: { quake: Quake | null; onClose: () => void }) {
   const [form, setForm] = useState({
     time: (quake ? new Date(quake.time) : new Date()).toISOString().slice(0, 16),
@@ -153,22 +154,44 @@ function QuakeForm({ quake, onClose }: { quake: Quake | null; onClose: () => voi
       time: new Date(`${form.time}Z`).toISOString(),
       magnitude: Number(form.magnitude),
       depthKm: form.depthKm === '' ? null : Number(form.depthKm),
+      latitude: Number(form.latitude),
+      longitude: Number(form.longitude),
       place: form.place,
       countryCode: form.countryCode.trim() || null,
     };
-    if (quake) {
-      // координаты меняем, только если они были загружены (колонка «Координаты» включена)
-      const coords = form.latitude && form.longitude ? { latitude: Number(form.latitude), longitude: Number(form.longitude) } : {};
-      void update({ variables: { id: quake.id, input: { ...input, ...coords } } });
-    } else {
-      void create({ variables: { input: { ...input, latitude: Number(form.latitude), longitude: Number(form.longitude) } } });
+    if (!quake) {
+      void create({ variables: { input } });
+      return;
     }
+    // Поля скрытых колонок не загружены. Если отправить их пустыми, они сотрут значение в базе.
+    const { depthKm, latitude, longitude, countryCode, ...always } = input;
+    void update({
+      variables: {
+        id: quake.id,
+        input: {
+          ...always,
+          ...(quake.depthKm !== undefined && { depthKm }),
+          ...(quake.latitude !== undefined && { latitude, longitude }),
+          ...(quake.country !== undefined && { countryCode }),
+        },
+      },
+    });
+  };
+
+  const loaded = (key: keyof typeof form) => {
+    if (!quake) return true;
+    if (key === 'depthKm') return quake.depthKm !== undefined;
+    if (key === 'latitude' || key === 'longitude') return quake.latitude !== undefined;
+    if (key === 'countryCode') return quake.country !== undefined;
+    return true;
   };
 
   const field = (key: keyof typeof form, label: string, type = 'text', step?: string) => (
     <label>
       {label}
-      <input type={type} step={step} value={form[key]} required={['magnitude', 'place', 'time'].includes(key) || (!quake && ['latitude', 'longitude'].includes(key))}
+      <input id={`quake-${key}`} type={type} step={step} value={form[key]} disabled={!loaded(key)}
+        required={['magnitude', 'place', 'time'].includes(key) || (!quake && ['latitude', 'longitude'].includes(key))}
+        placeholder={loaded(key) ? undefined : 'включите колонку'}
         onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))} />
     </label>
   );

@@ -26,10 +26,9 @@ export interface CountrySort {
 const COLUMNS = `code, code3, name, region, income_level AS "incomeLevel", capital, latitude, longitude,
   population::float8 AS population, gdp_usd AS "gdpUsd"`;
 
-/** Белый список колонок сортировки: enum из GraphQL -> имя колонки. */
+// Сортировать можно только по этим колонкам, текст от клиента в ORDER BY не попадает.
 const SORT_COLUMNS: Record<CountrySort['field'], string> = { NAME: 'name', POPULATION: 'population', GDP: 'gdp_usd' };
 
-/** Динамически строит WHERE из фильтра: в SQL попадают только заданные условия. */
 function buildWhere(f: CountryFilter = {}): SqlBuilder {
   const sql = new SqlBuilder();
   if (f.search?.trim()) sql.and(`name ILIKE ${sql.p(likePattern(f.search.trim()))}`);
@@ -54,7 +53,6 @@ export async function countCountries(filter?: CountryFilter): Promise<number> {
   return rows[0].count;
 }
 
-/** Пакетная загрузка по кодам (для DataLoader и resolveReference федерации). */
 export async function findByCodes(codes: readonly string[]): Promise<Country[]> {
   const { rows } = await pool.query<Country>(`SELECT ${COLUMNS} FROM countries WHERE code = ANY($1)`, [codes]);
   return rows;
@@ -62,10 +60,8 @@ export async function findByCodes(codes: readonly string[]): Promise<Country[]> 
 
 export const MAX_NEIGHBOURS = 10;
 
-/**
- * Ближайшие страны по координатам столиц — один запрос сразу для всех стран страницы
- * (LATERAL JOIN). Расстояние — приближение равнопромежуточной проекции, для сортировки достаточно.
- */
+// Ближайшие по столицам страны сразу для всех стран страницы, одним запросом.
+// Расстояние считаем приблизительно: для сортировки этого хватает.
 export async function findNeighbours(codes: readonly string[]): Promise<(Country & { origin: string })[]> {
   const { rows } = await pool.query<Country & { origin: string }>(
     `SELECT src.code AS origin, n.*

@@ -1,14 +1,11 @@
 import { ApolloClient, HttpLink, InMemoryCache, gql, type TypedDocumentNode } from '@apollo/client';
 
-/** Единственный канал связи с backend — GraphQL gateway (/graphql проксируется nginx/vite). */
 export const client = new ApolloClient({
   link: new HttpLink({ uri: '/graphql' }),
   cache: new InMemoryCache({
-    typePolicies: { Country: { keyFields: ['code'] } }, // у страны ключ — ISO-код, а не id
+    typePolicies: { Country: { keyFields: ['code'] } }, // у страны нет поля id, её ключ — код
   }),
 });
-
-// ---------- Типы ----------
 
 export type SortOrder = 'ASC' | 'DESC';
 export type QuakeSource = 'USGS' | 'EMSC' | 'MANUAL';
@@ -71,12 +68,7 @@ export interface CountrySort {
   order: SortOrder;
 }
 
-// ---------- Землетрясения ----------
-
-/**
- * Фрагмент с директивами @include: набор колонок таблицы выбирает пользователь,
- * и запрос формируется динамически — сервер получает только нужные поля.
- */
+// Колонки таблицы включает пользователь, и через @include запрашиваются только они.
 const QUAKE_ROW = gql`
   fragment QuakeRow on Quake {
     id
@@ -160,8 +152,6 @@ export const DELETE_QUAKE: TypedDocumentNode<{ deleteQuake: boolean }, { id: str
   }
 `;
 
-// ---------- Страны ----------
-
 export const COUNTRIES: TypedDocumentNode<
   { countries: { total: number; items: CountryRow[] }; regions: string[] },
   { filter: { search?: string; regions?: string[] }; sort: CountrySort; page: Page }
@@ -176,7 +166,7 @@ export const COUNTRIES: TypedDocumentNode<
         incomeLevel
         population
         gdpUsd
-        quakeCount # поле из подграфа quakes — склеивается gateway'ем
+        quakeCount # приходит из подграфа quakes
       }
     }
     regions
@@ -191,7 +181,6 @@ export interface CountryDetails extends CountryRow {
   neighbours: { code: string; name: string; quakeCount: number }[];
 }
 
-/** Вложенность: страна → её землетрясения (federation) и страны-соседи → их счётчики. */
 export const COUNTRY_DETAILS: TypedDocumentNode<{ country: CountryDetails | null }, { code: string; page: Page }> = gql`
   query CountryDetails($code: ID!, $page: PageInput) {
     country(code: $code) {
@@ -226,8 +215,6 @@ export const COUNTRY_DETAILS: TypedDocumentNode<{ country: CountryDetails | null
     }
   }
 `;
-
-// ---------- Статистика ----------
 
 export interface QuakeStats {
   total: number;

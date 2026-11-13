@@ -1,6 +1,6 @@
 name: seismo
 
-# Общие настройки backend-сервисов (один образ, разные команды запуска).
+# Общие настройки backend-сервисов: образ один, отличается только command.
 x-backend: &backend
   build: ./backend
   image: seismo-backend:latest
@@ -11,7 +11,7 @@ x-backend: &backend
 
 x-backend-env: &backend-env
   DATABASE_URL: postgres://seismo:seismo@postgres:5432/seismo
-  # Трассировка OpenTelemetry -> Jaeger (OTLP/HTTP)
+  # трассы уходят в Jaeger
   OTEL_TRACES_EXPORTER: otlp
   OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
   OTEL_METRICS_EXPORTER: none
@@ -37,11 +37,10 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      # -h 127.0.0.1: во время выполнения init.sql сервер слушает только сокет, так что «готов» = схема создана
+      # проверка по TCP: пока выполняется init.sql, база по сети ещё недоступна
       test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "seismo", "-d", "seismo"]
       <<: *healthcheck
 
-  # Автоматический сбор данных: USGS + EMSC + World Bank
   collector:
     <<: *backend
     command: ["node", "dist/collector/index.js"]
@@ -52,7 +51,6 @@ services:
       MIN_MAGNITUDE: 3
       COLLECT_INTERVAL_MINUTES: 30
 
-  # Подграф 1: страны
   countries:
     <<: *backend
     command: ["node", "dist/countries/index.js"]
@@ -64,7 +62,6 @@ services:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4001/health"]
       <<: *healthcheck
 
-  # Подграф 2: землетрясения
   quakes:
     <<: *backend
     command: ["node", "dist/quakes/index.js"]
@@ -76,7 +73,6 @@ services:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4002/health"]
       <<: *healthcheck
 
-  # Federation gateway — единая точка входа GraphQL
   gateway:
     <<: *backend
     command: ["node", "dist/gateway/index.js"]
@@ -110,7 +106,7 @@ services:
     ports:
       - "8080:80"     # приложение: http://localhost:8080
 
-  # ---------- Мониторинг и трассировка ----------
+  # мониторинг и трассировка
 
   prometheus:
     image: prom/prometheus:v3.15.1

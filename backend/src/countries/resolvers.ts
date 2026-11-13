@@ -9,7 +9,7 @@ interface CountriesArgs {
   page?: PageInput;
 }
 
-/** Параметры страницы. Сами данные грузятся лениво — только запрошенные поля (items/total). */
+// items и total считаются отдельно и только если клиент их запросил.
 interface CountryPageSource {
   filter?: CountryFilter;
   sort: CountrySort;
@@ -39,7 +39,7 @@ export const resolvers = {
   },
 
   Country: {
-    /** Federation: gateway присылает { code } — достраиваем полную страну (пакетно). */
+    // Gateway присылает только { code }, остальные поля страны достраиваем здесь.
     __resolveReference: (ref: { code: string }, ctx: RequestContext) => countryByCode(ctx).load(ref.code),
 
     gdpPerCapitaUsd: (c: Country) => (c.gdpUsd && c.population ? Math.round(c.gdpUsd / c.population) : null),

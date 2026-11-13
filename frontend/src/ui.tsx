@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { SortOrder } from './graphql';
 
-/** Значение с задержкой: поиск не шлёт запрос на каждое нажатие клавиши. */
+// Чтобы поиск не отправлял запрос на каждое нажатие клавиши.
 export function useDebounced<T>(value: T, ms = 400): T {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -27,7 +27,6 @@ export function Pager({ total, limit, offset, onChange }: { total: number; limit
   );
 }
 
-/** Заголовок колонки с сортировкой: клик — выбрать поле, повторный клик — сменить направление. */
 export function SortHeader<F extends string>({
   field,
   sort,
@@ -48,9 +47,10 @@ export function SortHeader<F extends string>({
   );
 }
 
-export function Status({ loading, error }: { loading: boolean; error?: { message: string } }) {
+// «Загрузка…» показываем только в первый раз, иначе таблица прыгала бы при каждой смене фильтра.
+export function Status({ loading, hasData, error }: { loading: boolean; hasData: boolean; error?: { message: string } }) {
   if (error) return <div className="error">Ошибка: {error.message}</div>;
-  return loading ? <div className="muted">Загрузка…</div> : null;
+  return loading && !hasData ? <div className="muted">Загрузка…</div> : null;
 }
 
 export function Bars({ items, label = (k) => k }: { items: { key: string; count: number }[]; label?: (key: string) => string }) {
@@ -71,6 +71,7 @@ export function Bars({ items, label = (k) => k }: { items: { key: string; count:
 export const fmtDate = (iso: string) => new Date(iso).toLocaleString('ru', { dateStyle: 'short', timeStyle: 'short' });
 export const fmtNum = (n: number | null | undefined, digits = 0) =>
   n == null ? '—' : n.toLocaleString('ru', { maximumFractionDigits: digits });
+export const fmtMag = (m: number) => m.toLocaleString('ru', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 export const fmtBig = (n: number | null | undefined) =>
-  n == null ? '—' : n >= 1e12 ? `${(n / 1e12).toFixed(2)} трлн` : n >= 1e9 ? `${(n / 1e9).toFixed(2)} млрд` : n >= 1e6 ? `${(n / 1e6).toFixed(1)} млн` : fmtNum(n);
+  n == null ? '—' : n >= 1e12 ? `${fmtNum(n / 1e12, 2)} трлн` : n >= 1e9 ? `${fmtNum(n / 1e9, 2)} млрд` : n >= 1e6 ? `${fmtNum(n / 1e6, 1)} млн` : fmtNum(n);
 export const magClass = (m: number) => (m >= 6 ? 'mag high' : m >= 5 ? 'mag mid' : 'mag');

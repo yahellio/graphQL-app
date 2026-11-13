@@ -10,10 +10,8 @@ interface ListArgs {
   page?: PageInput;
 }
 
-/**
- * Источник для QuakePage. Если задан countryCode — это вложенный список страны,
- * и данные грузятся пакетно через DataLoader (одним SQL для всех стран на странице).
- */
+// Если задан countryCode, это список событий внутри страны: такие списки
+// грузятся через DataLoader одним SQL-запросом для всех стран страницы.
 interface QuakePageSource {
   filter?: QuakeFilter;
   sort: QuakeSort;
@@ -30,8 +28,7 @@ const toPageSource = (args: ListArgs, countryCode?: string): QuakePageSource => 
   countryCode,
 });
 
-// ---------- Кэш тяжёлых агрегаций (сбрасывается при любой мутации) ----------
-
+// Статистика считается тяжело, поэтому кэшируем её на минуту. Любая мутация сбрасывает кэш.
 const STATS_TTL_MS = 60_000;
 const statsCache = new Map<string, { expires: number; value: Promise<unknown> }>();
 
@@ -46,8 +43,6 @@ function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
   statsCache.set(key, { expires: Date.now() + STATS_TTL_MS, value });
   return value;
 }
-
-// ---------- Валидация мутаций ----------
 
 const badInput = (message: string) => new GraphQLError(message, { extensions: { code: 'BAD_USER_INPUT' } });
 
@@ -76,8 +71,6 @@ const parseId = (id: string): string => {
   if (!/^\d{1,18}$/.test(id)) throw badInput(`Invalid quake id: ${id}`);
   return id;
 };
-
-// ---------- Резолверы ----------
 
 export const resolvers = {
   DateTime: new GraphQLScalarType<Date, string>({
@@ -133,7 +126,7 @@ export const resolvers = {
   },
 
   Quake: {
-    /** Отдаём только ссылку { code } — остальные поля страны достроит подграф countries. */
+    // Отдаём только код, название и остальное gateway возьмёт из подграфа countries.
     country: (q: Quake) => (q.countryCode ? { __typename: 'Country', code: q.countryCode } : null),
   },
 
@@ -164,7 +157,7 @@ function summaryOf(filter?: QuakeFilter) {
   return cached(`summary:${JSON.stringify(filter)}`, () => repo.summary(filter));
 }
 
-/** Количество событий по стране — пакетно (GROUP BY) для всех стран на странице. */
+// Один GROUP BY на все страны страницы вместо отдельного запроса на каждую.
 function countForCountry(ctx: RequestContext, code: string, filter?: QuakeFilter): Promise<number> {
   return ctx.loaders
     .get(`countryCount:${JSON.stringify(filter ?? null)}`, async (codes) => {

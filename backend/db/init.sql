@@ -1,13 +1,11 @@
--- Схема БД. Выполняется автоматически при первом старте контейнера postgres.
--- Каждой таблицей владеет свой подграф: countries -> сервис countries, quakes -> сервис quakes.
--- Поэтому внешнего ключа quakes.country_code -> countries.code нет: связь между
--- сервисами строится на уровне GraphQL Federation, а не на уровне SQL.
+-- Таблицами владеют разные сервисы (countries и quakes), поэтому внешнего ключа
+-- quakes.country_code -> countries.code нет: их связывает GraphQL Federation.
 
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 CREATE TABLE IF NOT EXISTS countries (
-    code         text PRIMARY KEY CHECK (length(code) = 2),  -- ISO 3166-1 alpha-2
-    code3        text NOT NULL,                              -- ISO 3166-1 alpha-3
+    code         text PRIMARY KEY CHECK (length(code) = 2),
+    code3        text NOT NULL,
     name         text NOT NULL,
     region       text NOT NULL,
     income_level text NOT NULL,
@@ -35,10 +33,11 @@ CREATE TABLE IF NOT EXISTS quakes (
     url          text,
     country_code text CHECK (length(country_code) = 2),
     updated_at   timestamptz NOT NULL DEFAULT now(),
-    UNIQUE (source, external_id)                 -- идемпотентный upsert при повторном сборе
+    UNIQUE (source, external_id)
 );
 CREATE INDEX IF NOT EXISTS quakes_time ON quakes (time DESC);
 CREATE INDEX IF NOT EXISTS quakes_magnitude ON quakes (magnitude DESC);
 CREATE INDEX IF NOT EXISTS quakes_depth ON quakes (depth_km);
 CREATE INDEX IF NOT EXISTS quakes_country_time ON quakes (country_code, time DESC);
-CREATE INDEX IF NOT EXISTS quakes_place_trgm ON quakes USING gin (place gin_trgm_ops);  -- быстрый ILIKE-поиск
+-- trigram-индексы ускоряют поиск через ILIKE '%текст%'
+CREATE INDEX IF NOT EXISTS quakes_place_trgm ON quakes USING gin (place gin_trgm_ops);

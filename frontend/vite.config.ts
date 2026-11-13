@@ -1,7 +1,7 @@
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
-// В dev-режиме /graphql проксируется на gateway — фронт и API на одном origin, CORS не нужен.
+// Проксируем /graphql на gateway, чтобы фронт и API были на одном адресе и не нужен был CORS.
 export default defineConfig({
   plugins: [react()],
   server: {

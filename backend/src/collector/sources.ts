@@ -1,4 +1,4 @@
-/** Адаптеры внешних источников: каждый приводит данные к единому формату. */
+// Каждый источник приводит свои данные к общему формату QuakeRecord / CountryRecord.
 
 export interface QuakeRecord {
   source: 'USGS' | 'EMSC';
@@ -31,8 +31,6 @@ export interface QuakeSource {
   fetch(from: Date, to: Date, minMagnitude: number): Promise<QuakeRecord[]>;
 }
 
-// ---------- HTTP с таймаутом и повторами ----------
-
 class HttpError extends Error {
   constructor(readonly status: number, url: string) {
     super(`HTTP ${status} for ${url}`);
@@ -41,10 +39,7 @@ class HttpError extends Error {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/**
- * GET JSON с таймаутом и экспоненциальным backoff.
- * Повторяем только временные ошибки: сеть, таймаут, 429 и 5xx.
- */
+// Повторяем с растущей паузой только временные ошибки: сеть, таймаут, 429 и 5xx.
 export async function fetchJson<T>(url: string, attempts = 4): Promise<T | null> {
   for (let attempt = 1; ; attempt++) {
     try {
@@ -52,7 +47,7 @@ export async function fetchJson<T>(url: string, attempts = 4): Promise<T | null>
         signal: AbortSignal.timeout(60_000),
         headers: { Accept: 'application/json', 'User-Agent': 'seismo-lab-collector/1.0' },
       });
-      if (res.status === 204) return null; // FDSN: нет событий за период
+      if (res.status === 204) return null; // нет событий за период
       if (!res.ok) throw new HttpError(res.status, url);
       return (await res.json()) as T;
     } catch (err) {
@@ -68,7 +63,7 @@ export async function fetchJson<T>(url: string, attempts = 4): Promise<T | null>
 const fdsnTime = (d: Date) => d.toISOString().slice(0, 19);
 const num = (v: unknown): number | null => (v == null || v === '' || Number.isNaN(Number(v)) ? null : Number(v));
 
-// ---------- Источник 1: USGS (Геологическая служба США) ----------
+// USGS — Геологическая служба США
 
 interface UsgsResponse {
   features: {
@@ -102,7 +97,7 @@ export const usgs: QuakeSource = {
   },
 };
 
-// ---------- Источник 2: EMSC (Европейско-Средиземноморский сейсмологический центр) ----------
+// EMSC — Европейско-Средиземноморский сейсмологический центр
 
 interface EmscResponse {
   features: {
@@ -135,13 +130,12 @@ export const emsc: QuakeSource = {
   },
 };
 
-// ---------- Источник 3: World Bank (страны + индикаторы) ----------
+// World Bank — страны, население и ВВП
 
 const WORLD_BANK = 'https://api.worldbank.org/v2';
 
 type WorldBankPage<T> = [{ page: number; pages: number }, T[] | null];
 
-/** World Bank отдаёт данные постранично — обходим все страницы. */
 async function fetchWorldBank<T>(path: string): Promise<T[]> {
   const items: T[] = [];
   for (let page = 1, pages = 1; page <= pages; page++) {
@@ -170,7 +164,7 @@ interface WbIndicatorValue {
   value: number | null;
 }
 
-/** Последнее непустое значение индикатора для каждой страны (ключ — ISO3). */
+// Последнее известное значение показателя по каждой стране (ключ — ISO3)
 async function indicator(id: string): Promise<Map<string, number>> {
   const rows = await fetchWorldBank<WbIndicatorValue>(`/country/all/indicator/${id}?mrnev=1`);
   return new Map(rows.filter((r) => r.value != null).map((r) => [r.countryiso3code, r.value!]));
@@ -183,7 +177,7 @@ export async function fetchCountries(): Promise<CountryRecord[]> {
     indicator('NY.GDP.MKTP.CD'),
   ]);
   return countries
-    .filter((c) => c.region.id !== 'NA' && /^[A-Z]{2}$/.test(c.iso2Code)) // отбрасываем агрегаты («World», «Euro area»...)
+    .filter((c) => c.region.id !== 'NA' && /^[A-Z]{2}$/.test(c.iso2Code)) // убираем группы вроде «World» и «Euro area»
     .map((c) => ({
       code: c.iso2Code,
       code3: c.id,

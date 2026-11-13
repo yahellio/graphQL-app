@@ -17,10 +17,8 @@ const MAX_COMPLEXITY = Number(process.env.MAX_QUERY_COMPLEXITY ?? 5000);
 const RATE_LIMIT_PER_MINUTE = Number(process.env.RATE_LIMIT_PER_MINUTE ?? 300);
 const SUBGRAPH_TIMEOUT_MS = Number(process.env.SUBGRAPH_TIMEOUT_MS ?? 10_000);
 
-// ---------- Federation: supergraph собирается из SDL подграфов при старте ----------
-// Аналог `rover supergraph compose`: gateway не зависит от доступности подграфов при запуске,
-// а ошибки совместимости схем обнаруживаются сразу.
-
+// Общая схема собирается из схем подграфов прямо при старте (как `rover supergraph compose`):
+// gateway не ждёт, пока поднимутся подграфы, а несовместимость схем видна сразу.
 const composition = composeServices([
   { name: 'countries', typeDefs: countriesTypeDefs, url: process.env.COUNTRIES_URL ?? 'http://localhost:4001/graphql' },
   { name: 'quakes', typeDefs: quakesTypeDefs, url: process.env.QUAKES_URL ?? 'http://localhost:4002/graphql' },
@@ -31,8 +29,8 @@ if (composition.errors) {
 
 const gateway = new ApolloGateway({
   supergraphSdl: composition.supergraphSdl,
-  // Таймаут на каждый запрос к подграфу: медленный сервис не «подвесит» gateway.
-  // Если подграф недоступен, клиент получит частичные данные + ошибку в errors[].
+  // Таймаут, чтобы медленный подграф не подвесил gateway. Если подграф недоступен,
+  // клиент всё равно получит данные от остальных, а причину — в errors.
   buildService: ({ url }) =>
     new RemoteGraphQLDataSource({
       url,
@@ -41,9 +39,7 @@ const gateway = new ApolloGateway({
     }),
 });
 
-// ---------- Контроль нагрузки ----------
-
-/** Сложность списка = размер страницы × сложность одного элемента. */
+// Список стоит «размер страницы × стоимость одного элемента».
 const paginationEstimator: ComplexityEstimator = ({ field, args, childComplexity }) => {
   const hasPage = (field as GraphQLField<unknown, unknown>).args.some((a) => a.name === 'page');
   const size = args.limit ?? (hasPage ? (args.page?.limit ?? DEFAULT_PAGE_SIZE) : undefined);

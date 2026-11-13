@@ -1,6 +1,5 @@
 import { parse } from 'graphql';
 
-/** Подграф «countries»: справочник стран (источник — World Bank API). */
 export const typeDefs = parse(/* GraphQL */ `
   extend schema @link(url: "https://specs.apollo.dev/federation/v2.7", import: ["@key"])
 
@@ -9,17 +8,14 @@ export const typeDefs = parse(/* GraphQL */ `
     DESC
   }
 
-  "Пагинация: limit ограничен 100 записями на странице."
   input PageInput {
     limit: Int = 20
     offset: Int = 0
   }
 
-  "Страна. Сущность федерации: подграф quakes расширяет её полями о землетрясениях."
+  # Сущность федерации: подграф quakes добавляет к стране поля quakes и quakeCount
   type Country @key(fields: "code") {
-    "ISO 3166-1 alpha-2"
     code: ID!
-    "ISO 3166-1 alpha-3"
     code3: String!
     name: String!
     region: String!
@@ -27,9 +23,7 @@ export const typeDefs = parse(/* GraphQL */ `
     capital: String
     population: Float
     gdpUsd: Float
-    "Вычисляемое поле: ВВП на душу населения"
     gdpPerCapitaUsd: Float
-    "Ближайшие страны по координатам столиц (вложенный список стран)"
     neighbours(limit: Int = 5): [Country!]!
   }
 
@@ -39,7 +33,6 @@ export const typeDefs = parse(/* GraphQL */ `
   }
 
   input CountryFilter {
-    "Поиск по названию (подстрока, без учёта регистра)"
     search: String
     regions: [String!]
   }

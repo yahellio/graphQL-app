@@ -15,27 +15,22 @@ interface ServiceOptions<TContext extends BaseContext> {
   port: number;
   apollo: ApolloServerOptions<TContext>;
   context: () => Promise<TContext>;
-  /** Доп. middleware перед GraphQL (например, rate limit на gateway). */
   middleware?: RequestHandler[];
-  /** Проверка зависимостей для /health (например, БД). */
   healthCheck?: () => Promise<void>;
   onShutdown?: () => Promise<void>;
 }
 
-/**
- * Единая точка запуска для gateway и подграфов:
- * Express + Apollo Server + /health + /metrics + graceful shutdown.
- */
+// Общий запуск для gateway и подграфов: GraphQL, /health, /metrics и аккуратная остановка.
 export async function startService<TContext extends BaseContext>(opts: ServiceOptions<TContext>): Promise<void> {
   const app = express();
-  app.set('trust proxy', 'loopback, linklocal, uniquelocal'); // реальный IP клиента за nginx
+  app.set('trust proxy', 'loopback, linklocal, uniquelocal'); // чтобы rate limit видел IP клиента, а не nginx
   const httpServer = http.createServer(app);
 
   const server = new ApolloServer<TContext>({
     ...opts.apollo,
     plugins: [
       ...(opts.apollo.plugins ?? []),
-      ApolloServerPluginDrainHttpServer({ httpServer }), // дождаться активных запросов при остановке
+      ApolloServerPluginDrainHttpServer({ httpServer }), // при остановке дожидается текущих запросов
       metricsPlugin(opts.name),
     ],
   } as ApolloServerOptions<TContext>);
@@ -57,7 +52,7 @@ export async function startService<TContext extends BaseContext>(opts: ServiceOp
   app.use(
     '/graphql',
     ...(opts.middleware ?? []),
-    express.json({ limit: '100kb' }), // защита от огромных тел запросов
+    express.json({ limit: '100kb' }),
     expressMiddleware(server, { context: opts.context }),
   );
 
@@ -74,16 +69,14 @@ export async function startService<TContext extends BaseContext>(opts: ServiceOp
   process.once('SIGINT', () => void shutdown('SIGINT'));
 }
 
-/** Запуск подграфа федерации: схема + DataLoader-контекст + проверка БД в /health. */
 export function startSubgraph(name: string, port: number, typeDefs: DocumentNode, resolvers: object): Promise<void> {
   return startService({
     name,
     port,
     apollo: {
-      // Резолверы типизированы своим контекстом, а GraphQLResolverMap из @apollo/subgraph
-      // ждёт context: unknown и наружу не экспортируется — отсюда приведение типа.
+      // as any: тип резолверов в @apollo/subgraph не умеет в свой контекст и не экспортируется.
       schema: buildSubgraphSchema({ typeDefs, resolvers: resolvers as any }),
-      plugins: [ApolloServerPluginInlineTraceDisabled()], // трассировка идёт через OpenTelemetry
+      plugins: [ApolloServerPluginInlineTraceDisabled()], // трассировку пишем через OpenTelemetry
     },
     context: createContext,
     healthCheck: checkDb,

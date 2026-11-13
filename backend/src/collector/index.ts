@@ -4,16 +4,11 @@ import { registry, serveMetrics } from '../shared/metrics';
 import { CountryMatcher } from './geo';
 import { emsc, fetchCountries, usgs, type CountryRecord, type QuakeRecord, type QuakeSource } from './sources';
 
-/**
- * Автоматический сбор данных из 3 источников:
- *   1) World Bank — справочник стран (население, ВВП, регион);
- *   2) USGS и 3) EMSC — землетрясения.
- * Первый запуск загружает историю за COLLECT_DAYS дней, дальше каждые
- * COLLECT_INTERVAL_MINUTES догружаются только новые события (инкрементально).
- */
+// Первый запуск грузит историю за COLLECT_DAYS дней, дальше каждые
+// COLLECT_INTERVAL_MINUTES догружаются только новые события.
 
 const COLLECT_DAYS = Number(process.env.COLLECT_DAYS ?? 180);
-const CHUNK_DAYS = 15; // окно одного запроса к API (чтобы не упираться в лимит 20 000 событий)
+const CHUNK_DAYS = 15; // у API лимит 20 000 событий на запрос, поэтому грузим по 15 дней
 const MIN_MAGNITUDE = Number(process.env.MIN_MAGNITUDE ?? 3);
 const INTERVAL_MS = Number(process.env.COLLECT_INTERVAL_MINUTES ?? 30) * 60_000;
 const RETRY_MS = 60_000;
@@ -40,8 +35,7 @@ const lastSuccess = new client.Gauge({
   registers: [registry],
 });
 
-// ---------- Запись в БД (пакетный идемпотентный upsert через unnest) ----------
-
+// Пачка строк вставляется одним запросом через unnest; повторный сбор обновляет запись, а не дублирует.
 async function upsertCountries(rows: CountryRecord[]): Promise<void> {
   const col = <K extends keyof CountryRecord>(k: K) => rows.map((r) => r[k]);
   await pool.query(
@@ -77,9 +71,7 @@ async function upsertQuakes(rows: (QuakeRecord & { countryCode: string | null })
   );
 }
 
-// ---------- Сбор ----------
-
-/** Страны нужны для сопоставления. Если World Bank недоступен — работаем по уже сохранённым. */
+// Если World Bank недоступен, берём страны, которые уже есть в базе.
 async function collectCountries(): Promise<CountryMatcher> {
   try {
     const countries = await fetchCountries();
@@ -96,14 +88,14 @@ async function collectCountries(): Promise<CountryMatcher> {
   return new CountryMatcher(rows);
 }
 
-/** Инкрементально: продолжаем с последнего события источника (с перекрытием в сутки для уточнений). */
 async function collectQuakes(source: QuakeSource, matcher: CountryMatcher): Promise<number> {
   const { rows } = await pool.query<{ last: Date | null }>('SELECT max(time) AS last FROM quakes WHERE source = $1', [source.name]);
   const now = Date.now();
+  // Продолжаем с последнего события, захватив сутки назад: свежие события ещё уточняются.
+  // Если загрузка упадёт посередине, следующий запуск начнёт с того же места.
   let from = rows[0].last ? rows[0].last.getTime() - DAY_MS : now - COLLECT_DAYS * DAY_MS;
   let total = 0;
 
-  // Окна идут по возрастанию времени: при сбое следующий запуск продолжит с места остановки.
   while (from < now) {
     const to = Math.min(from + CHUNK_DAYS * DAY_MS, now);
     const records = await source.fetch(new Date(from), new Date(to), MIN_MAGNITUDE);
@@ -119,7 +111,7 @@ async function collectQuakes(source: QuakeSource, matcher: CountryMatcher): Prom
 async function runOnce(): Promise<boolean> {
   const started = Date.now();
   const matcher = await collectCountries();
-  // Источники независимы: падение одного не мешает другому (allSettled).
+  // allSettled: если один источник упал, второй всё равно соберётся.
   const results = await Promise.allSettled(SOURCES.map((s) => collectQuakes(s, matcher)));
   results.forEach((r, i) => {
     const name = SOURCES[i].name;
@@ -149,7 +141,7 @@ async function main(): Promise<void> {
       console.error('[collector] run failed:', (err as Error).message);
       return false;
     });
-    timer = setTimeout(loop, ok ? INTERVAL_MS : RETRY_MS); // при ошибке — быстрый повтор
+    timer = setTimeout(loop, ok ? INTERVAL_MS : RETRY_MS);
   };
   process.once('SIGTERM', () => {
     clearTimeout(timer);

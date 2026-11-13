@@ -1,10 +1,5 @@
-/**
- * Определение страны по текстовому описанию места события.
- * USGS: "199 km NW of Port-Olry, Vanuatu", "10 km NE of The Geysers, CA".
- * EMSC: "NEAR EAST COAST OF HONSHU, JAPAN", "OFF EAST COAST OF KAMCHATKA".
- * Ищем самое длинное совпадение с названием страны или синонимом
- * ("PAPUA NEW GUINEA" важнее "GUINEA", "NEW MEXICO" важнее "MEXICO").
- */
+// Страну определяем по тексту места: "144 km SE of Hasaki, Japan", "OFF EAST COAST OF KAMCHATKA".
+// Берём самое длинное совпадение, чтобы "PAPUA NEW GUINEA" не превратилась в "GUINEA".
 
 const US_STATES = [
   'ALABAMA', 'ALASKA', 'ARIZONA', 'ARKANSAS', 'CALIFORNIA', 'COLORADO', 'CONNECTICUT', 'DELAWARE', 'FLORIDA', 'HAWAII',
@@ -12,14 +7,14 @@ const US_STATES = [
   'MICHIGAN', 'MINNESOTA', 'MISSISSIPPI', 'MISSOURI', 'MONTANA', 'NEBRASKA', 'NEVADA', 'NEW HAMPSHIRE', 'NEW JERSEY',
   'NEW MEXICO', 'NEW YORK', 'NORTH CAROLINA', 'NORTH DAKOTA', 'OHIO', 'OKLAHOMA', 'OREGON', 'PENNSYLVANIA',
   'RHODE ISLAND', 'SOUTH CAROLINA', 'SOUTH DAKOTA', 'TENNESSEE', 'TEXAS', 'UTAH', 'VERMONT', 'VIRGINIA', 'WASHINGTON',
-  'WEST VIRGINIA', 'WISCONSIN', 'WYOMING', // GEORGIA намеренно нет — совпадает с названием страны
+  'WEST VIRGINIA', 'WISCONSIN', 'WYOMING', // без GEORGIA: так называется и страна
 ];
 
 const US_STATE_CODES = new Set(
   'AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY'.split(' '),
 );
 
-/** Синонимы и регионы, которых нет в официальных названиях World Bank. */
+// Регионы и привычные названия, которых нет в списке World Bank
 const ALIASES: Record<string, string[]> = {
   US: ['UNITED STATES', 'USA', 'ALEUTIAN', 'ALEUTIAN IS', 'ALEUTIAN ISLANDS', 'GULF OF ALASKA', ...US_STATES],
   MX: ['GULF OF CALIFORNIA', 'BAJA CALIFORNIA', 'REVILLA GIGEDO'],
@@ -57,33 +52,32 @@ const ALIASES: Record<string, string[]> = {
   CG: ['REPUBLIC OF THE CONGO'],
 };
 
-/** Фразы, которые содержат название страны, но к ней не относятся. */
+// Содержат название страны, но к ней не относятся
 const NO_COUNTRY = ['SOUTH GEORGIA', 'SOUTH SANDWICH ISLANDS', 'INDIAN OCEAN', 'INDIAN ANTARCTIC RIDGE'];
 
 const normalize = (s: string): string =>
   s
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '') // Türkiye -> TURKIYE
+    .replace(/\p{M}/gu, '')
     .toUpperCase()
     .replace(/[^A-Z0-9]+/g, ' ')
     .trim();
 
-/** "Korea, Rep." -> ["KOREA REP", "KOREA"]; "Puerto Rico (US)" -> ["PUERTO RICO"]. */
+// "Korea, Rep." -> ["KOREA REP", "KOREA"]
 const baseNames = (name: string): string[] => {
   const withoutParens = name.replace(/\(.*?\)/g, '');
   return [...new Set([normalize(withoutParens), normalize(withoutParens.split(',')[0])])];
 };
 
 export class CountryMatcher {
-  /** [нормализованное имя, код] — от длинных к коротким. Пустой код = «не страна». */
-  private readonly names: [string, string][];
+  private readonly names: [string, string][]; // от длинных имён к коротким; пустой код = «не страна»
 
   constructor(countries: { code: string; name: string }[]) {
     const known = new Set(countries.map((c) => c.code));
     const map = new Map<string, string | null>();
     for (const c of countries) {
       for (const n of baseNames(c.name)) {
-        // одно имя у двух стран ("CONGO") — неоднозначно, такое имя не используем
+        // "CONGO" есть у двух стран, такие имена пропускаем
         map.set(n, map.has(n) && map.get(n) !== c.code ? null : c.code);
       }
     }
@@ -99,7 +93,7 @@ export class CountryMatcher {
 
   match(place: string): string | null {
     const suffix = place.split(',').pop()!.trim();
-    if (US_STATE_CODES.has(suffix)) return 'US'; // USGS: "..., CA"
+    if (US_STATE_CODES.has(suffix)) return 'US'; // USGS пишет штаты сокращённо: "..., CA"
     if (suffix === 'MX') return 'MX';
 
     const text = ` ${normalize(place)} `;

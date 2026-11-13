@@ -1,10 +1,7 @@
 import DataLoader from 'dataloader';
 
-/**
- * Реестр DataLoader'ов на время одного запроса (решение проблемы N+1).
- * Ключ включает аргументы поля, поэтому, например, `quakes(page: {limit: 5})`
- * для 20 стран выполняется одним SQL-запросом, а не двадцатью.
- */
+// DataLoader'ы живут один запрос и решают проблему N+1. В ключ входят аргументы поля,
+// поэтому `quakes(page: {limit: 5})` для 20 стран выполняется одним SQL-запросом, а не двадцатью.
 export class Loaders {
   private readonly loaders = new Map<string, DataLoader<string, unknown>>();
 
@@ -24,7 +21,7 @@ export interface RequestContext {
 
 export const createContext = async (): Promise<RequestContext> => ({ loaders: new Loaders() });
 
-/** Раскладывает строки по ключам в порядке, который ожидает DataLoader. */
+// DataLoader ждёт результаты строго в порядке ключей.
 export function groupBy<T>(keys: readonly string[], rows: T[], keyOf: (row: T) => string): T[][] {
   const groups = new Map<string, T[]>(keys.map((k) => [k, []]));
   for (const row of rows) groups.get(keyOf(row))?.push(row);

@@ -1,7 +1,7 @@
 import { useQuery } from '@apollo/client/react';
 import { useState } from 'react';
 import { COUNTRIES, COUNTRY_DETAILS, type CountrySort } from '../graphql';
-import { Pager, SortHeader, Status, fmtBig, fmtDate, fmtNum, magClass, useDebounced } from '../ui';
+import { Pager, SortHeader, Status, fmtBig, fmtDate, fmtMag, fmtNum, magClass, useDebounced } from '../ui';
 
 const PAGE_SIZE = 20;
 const DETAIL_PAGE_SIZE = 10;
@@ -34,33 +34,35 @@ export function CountriesPage() {
           </select>
           <button onClick={() => setSort({ field: 'NAME', order: 'ASC' })}>По алфавиту</button>
         </div>
-        <Status loading={loading} error={error} />
+        <Status loading={loading} hasData={!!result} error={error} />
         {result && (
-          <>
-            <table>
-              <thead>
-                <tr>
-                  <SortHeader field="NAME" sort={sort} onSort={setSort}>Страна</SortHeader>
-                  <th>Регион</th>
-                  <SortHeader field="POPULATION" sort={sort} onSort={setSort}>Население</SortHeader>
-                  <SortHeader field="GDP" sort={sort} onSort={setSort}>ВВП, $</SortHeader>
-                  <th title="Поле из подграфа quakes">Землетрясений</th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.countries.items.map((c) => (
-                  <tr key={c.code} className={c.code === selected ? 'selected clickable' : 'clickable'} onClick={() => setSelected(c.code)}>
-                    <td><b>{c.code}</b> {c.name}</td>
-                    <td className="muted">{c.region}</td>
-                    <td>{fmtBig(c.population)}</td>
-                    <td>{fmtBig(c.gdpUsd)}</td>
-                    <td>{fmtNum(c.quakeCount)}</td>
+          <div className={loading ? 'stale' : undefined}>
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <SortHeader field="NAME" sort={sort} onSort={setSort}>Страна</SortHeader>
+                    <th>Регион</th>
+                    <SortHeader field="POPULATION" sort={sort} onSort={setSort}>Население</SortHeader>
+                    <SortHeader field="GDP" sort={sort} onSort={setSort}>ВВП, $</SortHeader>
+                    <th title="Поле из подграфа quakes">Землетрясений</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {result.countries.items.map((c) => (
+                    <tr key={c.code} className={c.code === selected ? 'selected clickable' : 'clickable'} onClick={() => setSelected(c.code)}>
+                      <td><b>{c.code}</b> {c.name}</td>
+                      <td className="muted">{c.region}</td>
+                      <td className="num">{fmtBig(c.population)}</td>
+                      <td className="num">{fmtBig(c.gdpUsd)}</td>
+                      <td className="num">{fmtNum(c.quakeCount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
             <Pager total={result.countries.total} limit={PAGE_SIZE} offset={offset} onChange={setOffset} />
-          </>
+          </div>
         )}
       </section>
       {selected && <CountryCard key={selected} code={selected} onSelect={setSelected} />}
@@ -76,8 +78,8 @@ function CountryCard({ code, onSelect }: { code: string; onSelect: (code: string
   const c = (data ?? previousData)?.country;
 
   return (
-    <aside className="card">
-      <Status loading={loading} error={error} />
+    <aside className="card country-card">
+      <Status loading={loading} hasData={!!c} error={error} />
       {c && (
         <>
           <h2>{c.name} <small className="muted">{c.code} / {c.code3}</small></h2>
@@ -105,7 +107,7 @@ function CountryCard({ code, onSelect }: { code: string; onSelect: (code: string
               <tbody>
                 {c.quakes.items.map((q) => (
                   <tr key={q.id}>
-                    <td><span className={magClass(q.magnitude)}>{q.magnitude.toFixed(1)}</span></td>
+                    <td><span className={magClass(q.magnitude)}>{fmtMag(q.magnitude)}</span></td>
                     <td>{q.place}<br /><small className="muted">{fmtDate(q.time)} · {fmtNum(q.depthKm, 0)} км · {q.source}</small></td>
                   </tr>
                 ))}

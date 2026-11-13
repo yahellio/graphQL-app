@@ -1,5 +1,4 @@
-# Один образ для всех backend-сервисов (gateway, countries, quakes, collector).
-# Какой сервис запустить — задаёт command в docker-compose.yml.
+# Один образ на все backend-сервисы, какой запустить — задаёт command в docker-compose.yml.
 
 FROM node:22-alpine AS build
 WORKDIR /app
@@ -12,7 +11,7 @@ RUN npm run build && npm prune --omit=dev
 FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production
-# Автоинструментация OpenTelemetry (http, express, graphql, pg, fetch) без изменений в коде.
+# Трассировка OpenTelemetry подключается здесь, код для неё менять не нужно.
 ENV NODE_OPTIONS="--require @opentelemetry/auto-instrumentations-node/register"
 COPY --from=build /app/package.json ./
 COPY --from=build /app/node_modules ./node_modules

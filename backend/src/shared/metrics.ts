@@ -2,9 +2,8 @@ import http from 'node:http';
 import type { ApolloServerPlugin } from '@apollo/server';
 import client from 'prom-client';
 
-/** Реестр метрик Prometheus. Каждый сервис отдаёт его на GET /metrics. */
 export const registry = new client.Registry();
-client.collectDefaultMetrics({ register: registry }); // CPU, память, event loop lag, GC
+client.collectDefaultMetrics({ register: registry }); // CPU, память, задержка event loop
 
 const requestDuration = new client.Histogram({
   name: 'graphql_request_duration_seconds',
@@ -14,7 +13,6 @@ const requestDuration = new client.Histogram({
   registers: [registry],
 });
 
-/** Запросы, отклонённые контролем нагрузки (rate limit, глубина, сложность). */
 export const rejectedRequests = new client.Counter({
   name: 'graphql_rejected_requests_total',
   help: 'Запросы, отклонённые контролем нагрузки',
@@ -22,7 +20,7 @@ export const rejectedRequests = new client.Counter({
   registers: [registry],
 });
 
-/** Apollo-плагин: замеряет каждую операцию и пишет её в гистограмму. */
+// Замеряет время каждой GraphQL-операции.
 export function metricsPlugin(service: string): ApolloServerPlugin {
   return {
     async requestDidStart() {
@@ -40,7 +38,7 @@ export function metricsPlugin(service: string): ApolloServerPlugin {
   };
 }
 
-/** Отдельный HTTP-сервер метрик для не-GraphQL процесса (коллектор). */
+// У коллектора нет GraphQL-сервера, поэтому метрики он отдаёт через отдельный маленький HTTP-сервер.
 export function serveMetrics(port: number): http.Server {
   return http
     .createServer(async (_req, res) => {

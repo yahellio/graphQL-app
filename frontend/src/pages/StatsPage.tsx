@@ -1,7 +1,7 @@
 import { useQuery } from '@apollo/client/react';
 import { useState } from 'react';
 import { QUAKE_STATS, type QuakeSource } from '../graphql';
-import { Bars, Status, fmtBig, fmtNum } from '../ui';
+import { Bars, Status, fmtBig, fmtMag, fmtNum } from '../ui';
 
 const MONTHS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
 
@@ -17,7 +17,7 @@ export function StatsPage() {
     <section>
       <div className="filters">
         <label>
-          Магнитуда от <b>{minMagnitude.toFixed(1)}</b>
+          Магнитуда от <b>{fmtMag(minMagnitude)}</b>
           <input type="range" min={2} max={7} step={0.5} value={minMagnitude} onChange={(e) => setMinMagnitude(Number(e.target.value))} />
         </label>
         <select value={source} onChange={(e) => setSource(e.target.value as QuakeSource | '')}>
@@ -27,9 +27,9 @@ export function StatsPage() {
           <option>MANUAL</option>
         </select>
       </div>
-      <Status loading={loading} error={error} />
+      <Status loading={loading} hasData={!!s} error={error} />
       {s && (
-        <>
+        <div className={loading ? 'stale' : undefined}>
           <div className="kpis">
             <div className="kpi"><span>Событий</span><b>{fmtNum(s.total)}</b></div>
             <div className="kpi"><span>Средняя магнитуда</span><b>{fmtNum(s.avgMagnitude, 2)}</b></div>
@@ -60,7 +60,7 @@ export function StatsPage() {
               />
             </div>
           </div>
-        </>
+        </div>
       )}
     </section>
   );

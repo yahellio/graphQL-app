@@ -1,10 +1,8 @@
 import { parse } from 'graphql';
 
-/** Подграф «quakes»: сейсмические события (USGS, EMSC, ручной ввод) и аналитика. */
 export const typeDefs = parse(/* GraphQL */ `
   extend schema @link(url: "https://specs.apollo.dev/federation/v2.7", import: ["@key"])
 
-  "Дата-время в формате ISO 8601"
   scalar DateTime
 
   enum SortOrder {
@@ -12,7 +10,6 @@ export const typeDefs = parse(/* GraphQL */ `
     DESC
   }
 
-  "Пагинация: limit ограничен 100 записями на странице."
   input PageInput {
     limit: Int = 20
     offset: Int = 0
@@ -35,7 +32,6 @@ export const typeDefs = parse(/* GraphQL */ `
     longitude: Float!
     place: String!
     url: String
-    "Страна резолвится подграфом countries через федерацию"
     country: Country
   }
 
@@ -45,7 +41,6 @@ export const typeDefs = parse(/* GraphQL */ `
   }
 
   input QuakeFilter {
-    "Поиск по описанию места (подстрока, без учёта регистра)"
     search: String
     sources: [QuakeSource!]
     minMagnitude: Float
@@ -66,7 +61,7 @@ export const typeDefs = parse(/* GraphQL */ `
     order: SortOrder! = DESC
   }
 
-  "Расширение сущности Country из подграфа countries"
+  # Страна принадлежит подграфу countries, здесь мы только добавляем к ней поля
   type Country @key(fields: "code") {
     code: ID!
     quakes(filter: QuakeFilter, sort: QuakeSort, page: PageInput): QuakePage!
@@ -89,7 +84,6 @@ export const typeDefs = parse(/* GraphQL */ `
     maxMagnitude: Float
     avgDepthKm: Float
     bySource: [Bucket!]!
-    "Гистограмма по целой части магнитуды"
     byMagnitude: [Bucket!]!
     byMonth: [Bucket!]!
     topCountries(limit: Int = 10): [CountryQuakeCount!]!

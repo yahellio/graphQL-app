@@ -31,7 +31,7 @@ export interface QuakeSort {
   order: SortOrder;
 }
 
-/** Поля, которые можно задать через мутации (camelCase GraphQL -> колонка БД). */
+// Поля, которые можно менять мутациями: имя в GraphQL -> колонка в БД
 export const WRITABLE_COLUMNS = {
   time: 'time',
   magnitude: 'magnitude',
@@ -51,7 +51,6 @@ const SORT_COLUMNS: Record<QuakeSort['field'], string> = { TIME: 'time', MAGNITU
 
 const orderBy = (s: QuakeSort) => `${SORT_COLUMNS[s.field]} ${s.order} NULLS LAST, id ${s.order}`;
 
-/** Динамически строит WHERE: в SQL попадают только реально заданные условия фильтра. */
 function buildWhere(f: QuakeFilter = {}, sql = new SqlBuilder()): SqlBuilder {
   if (f.search?.trim()) sql.and(`place ILIKE ${sql.p(likePattern(f.search.trim()))}`);
   if (f.sources?.length) sql.and(`source = ANY(${sql.p(f.sources)})`);
@@ -62,8 +61,6 @@ function buildWhere(f: QuakeFilter = {}, sql = new SqlBuilder()): SqlBuilder {
   if (f.countryCodes?.length) sql.and(`country_code = ANY(${sql.p(f.countryCodes.map((c) => c.toUpperCase()))})`);
   return sql;
 }
-
-// ---------- Чтение ----------
 
 export async function findQuakes(filter: QuakeFilter | undefined, sort: QuakeSort, page: Page): Promise<Quake[]> {
   const sql = buildWhere(filter);
@@ -81,10 +78,8 @@ export async function countQuakes(filter?: QuakeFilter): Promise<number> {
   return rows[0].count;
 }
 
-/**
- * Страница землетрясений сразу для многих стран одним запросом:
- * ROW_NUMBER() нумерует события внутри каждой страны, затем берём нужное окно.
- */
+// Страница землетрясений сразу для нескольких стран одним запросом:
+// ROW_NUMBER() нумерует события внутри каждой страны, потом берём нужный диапазон.
 export async function findByCountries(
   codes: readonly string[],
   filter: QuakeFilter | undefined,
@@ -114,8 +109,6 @@ export async function countByCountries(codes: readonly string[], filter?: QuakeF
   );
   return new Map(rows.map((r) => [r.code, r.count]));
 }
-
-// ---------- Агрегации для статистики ----------
 
 export interface Summary {
   total: number;
@@ -166,8 +159,6 @@ export async function topCountries(limit: number, filter?: QuakeFilter): Promise
   );
   return rows;
 }
-
-// ---------- Запись ----------
 
 export async function insertQuake(input: QuakeInput): Promise<Quake> {
   const sql = new SqlBuilder();
