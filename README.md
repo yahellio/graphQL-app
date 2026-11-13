@@ -28,20 +28,6 @@ docker compose logs -f collector
 
 Остановить: `docker compose down` (с удалением данных — `docker compose down -v`).
 
-### Без Docker
-
-Нужны Node.js 22+ и PostgreSQL 15+ со схемой из `backend/db/init.sql`
-(по умолчанию `postgres://seismo:seismo@localhost:5432/seismo`, переопределяется `DATABASE_URL`).
-
-```bash
-cd backend && npm install
-npm run collect          # однократный сбор данных
-npm run dev:countries    # каждый в отдельном терминале
-npm run dev:quakes
-npm run dev:gateway
-cd ../frontend && npm install && npm run dev   # http://localhost:5173
-```
-
 ## Структура проекта
 
 ```
